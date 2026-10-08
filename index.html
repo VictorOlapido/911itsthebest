@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Flight 27 — Haba Birdy!</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#10253f;font-family:Arial,sans-serif;touch-action:none}
+canvas{display:block;width:100%;height:100%;touch-action:none}
+.overlay{position:fixed;inset:0;display:grid;place-items:center;background:#0b1835b8;color:#fff;text-align:center;padding:18px;z-index:4}
+.panel{width:min(92vw,500px);background:#152b50;border:4px solid #f9da75;box-shadow:0 12px 0 #09182b;padding:25px;border-radius:14px}
+h1{font-size:clamp(30px,7vw,54px);margin:0 0 10px;color:#ffe078;text-shadow:3px 3px #9b3b5a}
+p{line-height:1.5}button{border:0;background:#ffe078;color:#182746;font-weight:900;font-size:19px;padding:14px 26px;border-radius:10px;cursor:pointer}
+small{display:block;margin-top:12px;color:#c6d5ef}.hide{display:none!important}
+#hud{position:fixed;top:12px;left:12px;right:12px;z-index:2;display:flex;justify-content:space-between;gap:10px;pointer-events:none}
+.chip{color:#fff;background:#102746dc;border:2px solid #f6dc87;border-radius:9px;padding:9px 12px;font-weight:900;font-size:clamp(12px,2.5vw,17px)}
+#toast{position:fixed;top:20%;left:50%;transform:translateX(-50%);color:#fff;text-shadow:2px 3px #182746;font-weight:900;font-size:clamp(18px,4vw,33px);text-align:center;pointer-events:none;z-index:2}
+</style></head><body>
+<canvas id="game" aria-label="Flight 27 game"></canvas>
+<div id="hud" class="hide"><div class="chip" id="count">🏢 0 / 27</div><div class="chip" id="status">AIRCRAFT: FINE</div></div>
+<div id="toast"></div>
+<div id="start" class="overlay"><div class="panel"><h1>✈ FLIGHT 27</h1><p><b>HABA BIRDY EDITION</b></p><p>Crash through <b>27 buildings</b>, survive increasingly questionable aircraft damage, then make one final, spectacularly bad landing.</p><p>🖱️ Move mouse · 👆 Drag finger · ⌨️ WASD / arrows</p><button id="play">DRINK ABSOLUTE AND START FLIGHT</button><small>Sound starts after pressing Start. Landscape recommended on phones.</small></div></div>
+<div id="end" class="overlay hide"><div class="panel"><h1>🎉 HABA BIRDY! 🎉</h1><p>27 buildings destroyed. Ur a bad motherfucker.</p><p style="font-size:15px">OFFICIAL AVIATION VIOLATION</p><p style="font-size:clamp(32px,9vw,56px);color:#ff8585;font-weight:900;margin:8px">₱50,000</p><p>Reason: Wrong-way landing and excessive exposure of ass.</p><button id="again">FLY AGAIN ↻</button></div></div>
+<script>
+(()=>{
+'use strict';
+const c=document.getElementById('game'),ctx=c.getContext('2d'),hud=document.getElementById('hud'),countEl=document.getElementById('count'),statusEl=document.getElementById('status'),toastEl=document.getElementById('toast');
+const startEl=document.getElementById('start'),endEl=document.getElementById('end');
+let W=960,H=540,scale=1,last=0,elapsed=0,scroll=0,spawn=0,hits=0,mode='start',buildings=[],particles=[],clouds=[],keys=new Set(),pointer=null,plane={x:200,y:200,vy:0},invuln=0,airportX=0,runwayPlaneX=0,finalTimer=0,toastTime=0,shake=0,actx=null;
+const rand=(a,b)=>a+Math.random()*(b-a),clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const sprite=new Image();sprite.src='plane.png';let spriteReady=false;sprite.onload=()=>spriteReady=true;sprite.onerror=()=>spriteReady=false;
+const startSound = new Audio('start.mp3');
+startSound.volume = 0.8;
+function resize(){const d=Math.min(devicePixelRatio||1,2);c.width=Math.round(innerWidth*d);c.height=Math.round(innerHeight*d);ctx.setTransform(d,0,0,d,0,0);W=innerWidth;H=innerHeight;plane.x=Math.max(85,W*.24)}
+addEventListener('resize',resize);resize();
+function sound(freq=300,duration=.12,type='sawtooth',volume=.08){try{actx??=new (window.AudioContext||window.webkitAudioContext)();if(actx.state==='suspended')actx.resume();const o=actx.createOscillator(),g=actx.createGain();o.type=type;o.frequency.setValueAtTime(freq,actx.currentTime);o.frequency.exponentialRampToValueAtTime(Math.max(40,freq*.38),actx.currentTime+duration);g.gain.setValueAtTime(volume,actx.currentTime);g.gain.exponentialRampToValueAtTime(.001,actx.currentTime+duration);o.connect(g).connect(actx.destination);o.start();o.stop(actx.currentTime+duration)}catch(e){}}
+function notify(t){toastEl.textContent=t;toastTime=2}
+function reset(){elapsed=scroll=spawn=hits=invuln=finalTimer=shake=0;mode='city';buildings=[];particles=[];clouds=Array.from({length:10},()=>({x:rand(0,W),y:rand(30,H*.55),s:rand(.5,1.4)}));plane={x:Math.max(85,W*.24),y:H*.38,vy:0};pointer=null;hud.classList.remove('hide');startEl.classList.add('hide');endEl.classList.add('hide');countEl.textContent='🏢 0 / 27';statusEl.textContent='AIRCRAFT: FINE';notify('HIT 27 BUILDINGS!');sound(600,.2,'triangle')}
+document.getElementById('play').onclick = () => {
+    reset();
+
+    startSound.currentTime = 0;
+    startSound.play().catch(() => {});
+};
+function targetFromEvent(e){const r=c.getBoundingClientRect();pointer={x:e.clientX-r.left,y:e.clientY-r.top}}
+c.addEventListener('pointerdown',e=>{c.setPointerCapture(e.pointerId);targetFromEvent(e)});c.addEventListener('pointermove',e=>{if(e.pointerType==='mouse'||e.buttons)targetFromEvent(e)});c.addEventListener('pointerup',e=>{if(e.pointerType!=='mouse')pointer=null});
+addEventListener('keydown',e=>{if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key))e.preventDefault();keys.add(e.key.toLowerCase())});addEventListener('keyup',e=>keys.delete(e.key.toLowerCase()));
+function burst(x,y,n=30,fire=false){for(let i=0;i<n;i++)particles.push({x,y,vx:rand(-230,230),vy:rand(-250,100),life:rand(.3,.9),max:1,r:rand(2,8),color:fire?['#ffcb38','#f75a37','#202631'][Math.floor(rand(0,3))]:['#fff3a0','#f9a02f','#ec5336','#5d6778'][Math.floor(rand(0,4))]})}
+function building(){const w=rand(56,105),h=rand(H*.21,H*.57);buildings.push({x:W+30,y:H-h,w,h,hit:false,hue:Math.floor(rand(0,3))})}
+function impact(b){b.hit=true;hits++;countEl.textContent=`🏢 ${hits} / 27`;invuln=.35;shake=12;burst(b.x+b.w*.5,b.y+b.h*.4,36);sound(110,.3,'sawtooth',.12);if(hits===9)notify('⚠️ GE UBUSIN MO PRE');if(hits===18)notify('🔥 AIRCRAFT INTEGRITY: 2%');if(hits===24)notify('MAYDAY MAYDAY');statusEl.textContent=hits<9?'AIRCRAFT: FINE':hits<18?'AIRCRAFT: SMOKING':hits<27?'AIRCRAFT: ON FIRE':'AIRCRAFT: SOMEHOW FLYING';if(hits===27){mode='approach';buildings=[];airportX=W+150;notify('🛬 WRONG-WAY RUNWAY AHEAD!')}}
+function update(dt){if(mode==='start'||mode==='end')return;elapsed+=dt;scroll+=dt*175;invuln=Math.max(0,invuln-dt);shake=Math.max(0,shake-dt*26);toastTime=Math.max(0,toastTime-dt);toastEl.style.opacity=toastTime>0?'1':'0';
+const up=keys.has('arrowup')||keys.has('w'),down=keys.has('arrowdown')||keys.has('s'),left=keys.has('arrowleft')||keys.has('a'),right=keys.has('arrowright')||keys.has('d');
+let ty=pointer?pointer.y:plane.y+(down-up)*350*dt,tx=pointer?pointer.x:plane.x+(right-left)*300*dt;
+if(mode==='city'){plane.y+=(clamp(ty,55,H-65)-plane.y)*Math.min(1,dt*(pointer?6:12));plane.x+=(clamp(tx,55,W*.6)-plane.x)*Math.min(1,dt*(pointer?5:12))}
+if(mode==='approach'||mode==='landing'){const runwayY=H-76;plane.y+=(runwayY-39-plane.y)*Math.min(1,dt*.65);plane.x+=(W*.33-plane.x)*Math.min(1,dt*2)}
+clouds.forEach(o=>{o.x-=dt*22*o.s;if(o.x<-120){o.x=W+100;o.y=rand(30,H*.55)}});
+if(mode==='city'){spawn-=dt;if(spawn<=0){building();spawn=1.1}for(const b of buildings){b.x-=dt*175;if(!b.hit&&invuln<=0&&plane.x+40>b.x&&plane.x-37<b.x+b.w&&plane.y+19>b.y&&plane.y-19<H)impact(b)}buildings=buildings.filter(b=>b.x+b.w>0&&!b.hit)}
+if(mode==='approach'){airportX-=dt*175;if(airportX<W*.15){mode='landing';finalTimer=0;notify('⚠️ WRONG WAY!')}}
+if(mode==='landing'){finalTimer+=dt;if(finalTimer>2.3){mode='crash';finalTimer=0;burst(W*.47,H-85,95,true);shake=25;sound(65,.8,'sawtooth',.2);notify('💥 COLLISION!')}}
+if(mode==='crash'){finalTimer+=dt;if(finalTimer>2){mode='end';hud.classList.add('hide');endEl.classList.remove('hide');sound(800,.4,'triangle')}}
+if(hits>=9&&mode!=='end'&&Math.random()<dt*(hits>=18?48:20)){particles.push({x:plane.x-34,y:plane.y+rand(-8,9),vx:rand(-90,-35),vy:rand(-50,0),life:rand(.4,1.1),r:rand(3,10),color:hits>=18&&Math.random()<.4?'#ff8c28':'#38434d'})}
+for(const p of particles){p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=dt*85;p.life-=dt;p.r+=dt*3}particles=particles.filter(p=>p.life>0)}
+function cloud(x,y,s){ctx.fillStyle='#ffffffb9';for(const [dx,dy,r] of [[0,0,19],[18,-9,24],[40,0,20]]){ctx.beginPath();ctx.arc(x+dx*s,y+dy*s,r*s,0,Math.PI*2);ctx.fill()}}
+function drawBuilding(b){ctx.fillStyle=['#617c99','#7e789d','#557c85'][b.hue];ctx.fillRect(b.x,b.y,b.w,b.h);ctx.fillStyle='#f9db83';for(let yy=b.y+13;yy<H-10;yy+=24)for(let xx=b.x+10;xx<b.x+b.w-8;xx+=21)ctx.fillRect(xx,yy,10,12);ctx.fillStyle='#35475c';ctx.fillRect(b.x-3,b.y-5,b.w+6,6)}
+function drawPlane(x,y,other=false){ctx.save();ctx.translate(x,y);if(!other&&hits>=18)ctx.rotate(Math.sin(elapsed*16)*.065);if(other){ctx.scale(-.75,.75)}const pw=112,ph=62;
+if(spriteReady&&!other){ctx.drawImage(sprite,-pw*.52,-ph*.5,pw,ph)}else{ctx.fillStyle=other?'#e06b5d':'#f5f5e8';ctx.strokeStyle='#263e59';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(-54,0);ctx.lineTo(-20,-8);ctx.lineTo(29,-9);ctx.lineTo(52,-2);ctx.lineTo(58,5);ctx.lineTo(22,10);ctx.lineTo(-23,10);ctx.lineTo(-54,15);ctx.closePath();ctx.fill();ctx.stroke();ctx.beginPath();ctx.moveTo(-9,0);ctx.lineTo(4,-29);ctx.lineTo(20,-29);ctx.lineTo(18,0);ctx.closePath();ctx.fill();ctx.stroke();ctx.fillStyle='#65b6e6';ctx.fillRect(34,-7,13,6)}
+if(!other){ctx.strokeStyle='#50505b';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(-50,0);ctx.quadraticCurveTo(-85,3,-116,0);ctx.stroke();ctx.fillStyle='#fff4ae';ctx.strokeStyle='#65472c';ctx.fillRect(-214,-17,100,33);ctx.strokeRect(-214,-17,100,33);ctx.fillStyle='#25324b';ctx.font='bold 13px Arial';ctx.textAlign='center';ctx.fillText('HABA BIRDY!',-164,4);if(hits>=9){ctx.strokeStyle='#30343d';ctx.lineWidth=2;for(let i=0;i<Math.min(8,Math.floor(hits/3));i++){const xx=-26+i*7;ctx.beginPath();ctx.moveTo(xx,-2);ctx.lineTo(xx+6,5);ctx.lineTo(xx+3,9);ctx.stroke()}}if(hits>=18){ctx.font='20px Arial';ctx.fillText('🔥',-34,2)}}ctx.restore()}
+function render(){ctx.save();if(shake)ctx.translate(rand(-shake,shake),rand(-shake,shake));const sky=ctx.createLinearGradient(0,0,0,H);sky.addColorStop(0,'#78c5f2');sky.addColorStop(1,'#c7e8fb');ctx.fillStyle=sky;ctx.fillRect(-30,-30,W+60,H+60);for(const o of clouds)cloud(o.x,o.y,o.s);
+ctx.fillStyle='#9bbcc3';for(let x=-120-(scroll*.2%110);x<W+110;x+=110){const hh=65+(Math.sin(x*.017)+1)*28;ctx.fillRect(x,H-hh,90,hh)}
+if(mode==='city'||mode==='start'){for(const b of buildings)drawBuilding(b);ctx.fillStyle='#4c8b64';ctx.fillRect(0,H-10,W,10)}
+else{ctx.fillStyle='#629d67';ctx.fillRect(0,H-100,W,100);ctx.fillStyle='#525c67';ctx.fillRect(0,H-77,W,65);ctx.fillStyle='#f2edc5';for(let x=-(scroll%110);x<W;x+=110)ctx.fillRect(x,H-46,60,6);ctx.fillStyle='#e33c3c';ctx.font='bold 24px Arial';ctx.fillText('⛔ WRONG WAY',Math.max(30,W*.65),H-112);if(mode==='landing'||mode==='crash')drawPlane(W*.54,H-107,true)}
+if(mode!=='crash'&&mode!=='end')drawPlane(plane.x,plane.y);for(const p of particles){ctx.globalAlpha=Math.min(1,p.life*1.5);ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(p.x,p.y,Math.max(.5,p.r),0,Math.PI*2);ctx.fill();ctx.globalAlpha=1}ctx.restore()}
+function frame(t){const dt=Math.min((t-last)/1000||0,.033);last=t;update(dt);render();requestAnimationFrame(frame)}requestAnimationFrame(frame);
+})();
+</script></body></html>
